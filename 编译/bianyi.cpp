@@ -1,288 +1,683 @@
 #include <iostream>
 #include <fstream>
-#include <string>
-#include <unordered_map>
-#include <cctype>
 #include <vector>
-#include <memory>
+#include <map>
+#include <unordered_map>
+#include <cstdlib>
+#include <sstream>
+#include <string>
+#include <cctype>
 using namespace std;
 
-// 定义TokenPair结构体，用于存储标识符/关键字和对应的标记
-struct TokenPair {
-    string lexeme;
-    string token;
-};
+class SyntaxAnalyzer {
+public:
+    vector<string> sourceCode;
+    vector<pair<string, string>> tokens;
+    int currentPos;
+    int currRow;
+    int currCol;
+    map<string, string> keyword = {
+        {"const", "CONSTTK"}, {"int", "INTTK"}, {"char", "CHARTK"}, {"void", "VOIDTK"}, {"main", "MAINTK"}, 
+        {"if", "IFTK"}, {"else", "ELSETK"}, {"switch", "SWITCHTK"}, {"case", "CASETK"}, {"default", "DEFAULTTK"},
+        {"while", "WHILETK"}, {"for", "FORTK"}, {"scanf", "SCANFTK"}, {"printf", "PRINTFTK"}, {"return", "RETURNTK"}
+    };
 
-// 全局变量定义
-ifstream in;           // 输入文件流
-ofstream out;          // 输出文件流
-string currentToken;   // 当前识别的单词
-string currentValue;   // 当前单词的值
-int lineNum = 1;       // 当前行号（用于错误处理）
-
-// 哈希表存储关键字和符号
-unordered_map<string, string> tokenMap;
-
-// 初始化哈希表
-void initTokenMap() {
-    // 关键字
-    tokenMap["const"] = "CONSTTK";
-    tokenMap["int"] = "INTTK";
-    tokenMap["char"] = "CHARTK";
-    tokenMap["void"] = "VOIDTK";
-    tokenMap["main"] = "MAINTK";
-    tokenMap["if"] = "IFTK";
-    tokenMap["else"] = "ELSETK";
-    tokenMap["switch"] = "SWITCHTK";
-    tokenMap["case"] = "CASETK";
-    tokenMap["default"] = "DEFAULTTK";
-    tokenMap["while"] = "WHILETK";
-    tokenMap["for"] = "FORTK";
-    tokenMap["scanf"] = "SCANFTK";
-    tokenMap["printf"] = "PRINTFTK";
-    tokenMap["return"] = "RETURNTK";
+    fstream in;
+    map<string, string> funcResType;
+    string inputPath;
+    string outputPath;
     
-    // 运算符和界符
-    tokenMap["+"] = "PLUS";
-    tokenMap["-"] = "MINU";
-    tokenMap["*"] = "MULT";
-    tokenMap["/"] = "DIV";
-    tokenMap["<"] = "LSS";
-    tokenMap["<="] = "LEQ";
-    tokenMap[">"] = "GRE";
-    tokenMap[">="] = "GEQ";
-    tokenMap["=="] = "EQL";
-    tokenMap["!="] = "NEQ";
-    tokenMap[":"] = "COLON";
-    tokenMap["="] = "ASSIGN";
-    tokenMap[";"] = "SEMICN";
-    tokenMap[","] = "COMMA";
-    tokenMap["("] = "LPARENT";
-    tokenMap[")"] = "RPARENT";
-    tokenMap["["] = "LBRACK";
-    tokenMap["]"] = "RBRACK";
-    tokenMap["{"] = "LBRACE";
-    tokenMap["}"] = "RBRACE";
-    
-    cout << "哈希表初始化完成" << endl;
-}
+    bool isInt(char c) {
+        return c <= '9' && c >= '0';
+    }
 
-// 跳过空白字符
-void skipWhiteSpace() {
-    char c;
-    while (in.get(c)) {
-        if (c == ' ' || c == '\t' || c == '\r') {
-            continue;
-        } else if (c == '\n') {
-            lineNum++;
-        } else {
-            in.putback(c);
-            break;
+    bool isLetter(char c) {
+        return (c <= 'z' && c >= 'a') || (c <= 'Z' && c >= 'A') || (c == '_');
+    }
+
+    string toLower(string str) {
+        string temp = str;
+        for (int i = 0; i < str.size(); i++) {
+            if (temp[i] <= 'Z' && temp[i] >= 'A') {
+                temp[i] -= ('A' - 'a');
+            }
         }
+        return temp;
     }
-}
 
-// 识别标识符或关键字
-void identifyIdentifier() {
-    char c;
-    currentToken.clear();
-    
-    while (in.get(c)) {
-        if (isalnum(c) || c == '_') {
-            currentToken += c;
-        } else {
-            in.putback(c);
-            break;
-        }
-    }
-    
-    // 转换为小写用于查找
-    string lowercaseToken = currentToken;
-    for (char &ch : lowercaseToken) {
-        ch = tolower(ch);
-    }
-    
-    // 查找是否为关键字
-    auto it = tokenMap.find(lowercaseToken);
-    if (it != tokenMap.end()) {
-        currentValue = currentToken;
-        currentToken = it->second;
-    } else {
-        currentValue = currentToken;
-        currentToken = "IDENFR";
-    }
-}
-
-// 识别整数常量
-void identifyIntConstant() {
-    char c;
-    currentToken.clear();
-    // c已经由lexical函数读取
-    currentToken += c; 
-    
-    while (in.get(c)) {
-        if (isdigit(c)) {
-            currentToken += c;
-        } else {
-            in.putback(c);
-            break;
-        }
-    }
-    
-    currentValue = currentToken;
-    currentToken = "INTCON";
-}
-
-// 识别字符常量
-void identifyCharConstant() {
-    char c;
-    currentToken.clear();
-    
-    // 读取字符内容（单引号内的字符）
-    if (in.get(c)) {
-        currentToken += c;
-        // 确保有结束的单引号
-        if (in.peek() == '\'') {
-            in.get(c); // 跳过结束的单引号
-        }
-    }
-    
-    currentValue = currentToken;
-    currentToken = "CHARCON";
-}
-
-// 识别字符串常量
-void identifyStringConstant() {
-    char c;
-    currentToken.clear();
-    
-    while (in.get(c)) {
-        if (c == '"') {
-            break; // 字符串结束
-        }
-        currentToken += c;
-    }
-    
-    currentValue = currentToken;
-    currentToken = "STRCON";
-}
-
-// 识别运算符和界符
-void identifyOperator(char c) {
-    currentToken.clear();
-    
-    // c已经是当前字符，不需要再读取
-    currentToken += c;
-    
-    // 检查是否是双字符运算符
-    if (c == '<' || c == '>' || c == '=' || c == '!') {
-        if (in.peek() == '=') {
-            in.get(c);
-            currentToken += c;
-        }
-    }
-    
-    // 查找对应的标记
-    auto it = tokenMap.find(currentToken);
-    if (it != tokenMap.end()) {
-        currentValue = currentToken;
-        currentToken = it->second;
-    } else {
-        // 未知符号处理
-        currentValue = currentToken;
-        currentToken = "UNKNOWN";
-    }
-}
-
-// 词法分析主函数
-void lexical() {
-    char c;
-    
-    while (in.peek() != EOF) {
-        skipWhiteSpace();
+    SyntaxAnalyzer() {
+        inputPath = "testfile.txt";
+        outputPath = "output.txt";
+        currentPos = 0;
+        currRow = 0;
+        currCol = 0;
         
-        if (in.peek() == EOF) break;
-        
-        c = in.peek();
-        
-        if (isalpha(c) || c == '_') {
-            // 标识符或关键字
-            identifyIdentifier();
-        } else if (isdigit(c)) {
-            // 整数常量
-            in.get(c); // 读取第一个数字
-            currentToken.clear();
-            currentToken += c;
-            
-            while (in.get(c)) {
-                if (isdigit(c)) {
-                    currentToken += c;
-                } else {
-                    in.putback(c);
+        in.open(inputPath, ios::in);
+        if (in.is_open()) {
+            while (in.peek() != EOF) {
+                string input;
+                getline(in, input);
+                sourceCode.push_back(input);
+            }
+            in.close();
+        }
+    }
+
+    void performLexicalAnalysis() {
+        tokens.clear();
+        unordered_map<string, string> tokenMap;
+        tokenMap["const"] = "CONSTTK";
+        tokenMap["int"] = "INTTK";
+        tokenMap["char"] = "CHARTK";
+        tokenMap["void"] = "VOIDTK";
+        tokenMap["main"] = "MAINTK";
+        tokenMap["if"] = "IFTK";
+        tokenMap["else"] = "ELSETK";
+        tokenMap["switch"] = "SWITCHTK";
+        tokenMap["case"] = "CASETK";
+        tokenMap["default"] = "DEFAULTTK";
+        tokenMap["while"] = "WHILETK";
+        tokenMap["for"] = "FORTK";
+        tokenMap["scanf"] = "SCANFTK";
+        tokenMap["printf"] = "PRINTFTK";
+        tokenMap["return"] = "RETURNTK";
+        tokenMap["+"] = "PLUS";
+        tokenMap["-"] = "MINU";
+        tokenMap["*"] = "MULT";
+        tokenMap["/"] = "DIV";
+        tokenMap["<"] = "LSS";
+        tokenMap["<="] = "LEQ";
+        tokenMap[">"] = "GRE";
+        tokenMap[">="] = "GEQ";
+        tokenMap["=="] = "EQL";
+        tokenMap["!="] = "NEQ";
+        tokenMap[":"] = "COLON";
+        tokenMap["="] = "ASSIGN";
+        tokenMap[";"] = "SEMICN";
+        tokenMap[","] = "COMMA";
+        tokenMap["("] = "LPARENT";
+        tokenMap[")"] = "RPARENT";
+        tokenMap["["] = "LBRACK";
+        tokenMap["]"] = "RBRACK";
+        tokenMap["{"] = "LBRACE";
+        tokenMap["}"] = "RBRACE";
+
+        stringstream ss;
+        for (const string& line : sourceCode) {
+            ss << line << '\n';
+        }
+
+        string content = ss.str();
+        size_t pos = 0;
+        int lineNum = 1;
+
+        auto skipWhitespace = [&]() {
+            while (true) {
+                while (pos < content.size() && (content[pos] == ' ' || content[pos] == '\t' || content[pos] == '\r')) {
+                    pos++;
+                }
+                if (pos >= content.size() || content[pos] != '\n') {
                     break;
                 }
+                lineNum++;
+                pos++;
             }
-            
-            currentValue = currentToken;
-            currentToken = "INTCON";
-        } else if (c == '\'') {
-            // 字符常量
-            in.get(c); // 跳过开始的单引号
-            identifyCharConstant();
-        } else if (c == '"') {
-            // 字符串常量
-            in.get(c); // 跳过开始的双引号
-            identifyStringConstant();
+        };
+
+        while (pos < content.size()) {
+            skipWhitespace();
+            if (pos >= content.size()) break;
+
+            char c = content[pos];
+            string token, value;
+
+            if (isalpha(c) || c == '_') {
+                while (pos < content.size() && (isalnum(content[pos]) || content[pos] == '_')) {
+                    value += content[pos++];
+                }
+                string lowerValue = toLower(value);
+                token = tokenMap.count(lowerValue) ? tokenMap[lowerValue] : "IDENFR";
+            }
+            else if (isdigit(c)) {
+                while (pos < content.size() && isdigit(content[pos])) {
+                    value += content[pos++];
+                }
+                token = "INTCON";
+            }
+            else if (c == '\'') {
+                pos++;
+                if (pos < content.size()) {
+                    value = content[pos++];
+                    if (pos < content.size() && content[pos] == '\'') pos++;
+                }
+                token = "CHARCON";
+            }
+            else if (c == '"') {
+                pos++;
+                while (pos < content.size() && content[pos] != '"') {
+                    value += content[pos++];
+                }
+                if (pos < content.size() && content[pos] == '"') pos++;
+                token = "STRCON";
+            }
+            else {
+                value += c;
+                pos++;
+                if ((c == '<' || c == '>' || c == '=' || c == '!') && pos < content.size() && content[pos] == '=') {
+                    value += content[pos++];
+                }
+                token = tokenMap.count(value) ? tokenMap[value] : "UNKNOWN";
+            }
+
+            tokens.emplace_back(token, value);
+        }
+    }
+
+    bool isTypeIdentifier(const string& str) {
+        return (str == "INTTK" || str == "CHARTK");
+    }
+
+    void outputToken(ofstream& out) {
+        if (currentPos < tokens.size()) {
+            out << tokens[currentPos].first << " " << tokens[currentPos].second << endl;
+            currentPos++;
+        }
+    }
+
+    void parseConstantDeclaration(ofstream& out) {
+        outputToken(out);
+        parseConstantDefinition(out);
+        outputToken(out);
+        
+        while (currentPos < tokens.size() && tokens[currentPos].first == "CONSTTK") {
+            outputToken(out);
+            parseConstantDefinition(out);
+            outputToken(out);
+        }
+        out << "<常量说明>" << endl;
+    }
+
+    void parseConstantDefinition(ofstream& out) {
+        string typeToken = tokens[currentPos].first;
+        outputToken(out);
+        outputToken(out);
+        outputToken(out);
+        
+        if (typeToken == "INTTK") {
+            parseInteger(out);
         } else {
-            // 运算符或界符
-            in.get(c); // 读取运算符字符
-            identifyOperator(c);
+            outputToken(out);
         }
         
-        // 输出结果
-        out << currentToken << " " << currentValue << endl;
-        cout << currentToken << " " << currentValue << endl;
+        while (currentPos < tokens.size() && tokens[currentPos].first == "COMMA") {
+            outputToken(out);
+            outputToken(out);
+            outputToken(out);
+            if (typeToken == "INTTK") {
+                parseInteger(out);
+            } else {
+                outputToken(out);
+            }
+        }
+        out << "<常量定义>" << endl;
     }
-}
+
+    void parseVariableDeclaration(ofstream& out) {
+        while (currentPos < tokens.size() && isTypeIdentifier(tokens[currentPos].first) && 
+               (currentPos + 2 >= tokens.size() || tokens[currentPos + 2].first != "LPARENT")) {
+            string temp;
+            do {
+                outputToken(out);
+                outputToken(out);
+                vector<int> dimensions;
+                
+                while (currentPos < tokens.size() && tokens[currentPos].first == "LBRACK") {
+                    outputToken(out);
+                    dimensions.push_back(atoi(tokens[currentPos].second.c_str()));
+                    parseUnsignedInteger(out);
+                    outputToken(out);
+                }
+
+                if (currentPos >= tokens.size() || tokens[currentPos].first != "ASSIGN") {
+                    temp = "<变量定义无初始化>";
+                }
+                else {
+                    outputToken(out);
+                    if (dimensions.empty()) {
+                        parseConstant(out);
+                    }
+                    else {
+                        int totalElements = 1;
+                        for (int dim : dimensions) {
+                            totalElements *= dim;
+                        }
+                        while (totalElements > 0 && currentPos < tokens.size()) {
+                            if (tokens[currentPos].first == "INTCON" || tokens[currentPos].first == "CHARCON") {
+                                parseConstant(out);
+                                totalElements--;
+                            }
+                            else {
+                                outputToken(out);
+                            }
+                        }
+                        for (size_t i = 0; i < dimensions.size() && currentPos < tokens.size(); i++) {
+                            outputToken(out);
+                        }
+                    }
+                    temp = "<变量定义及初始化>";
+                }
+            } while(currentPos < tokens.size() && tokens[currentPos].first == "COMMA");
+            
+            out << temp << endl;
+            out << "<变量定义>" << endl;
+            if (currentPos < tokens.size()) {
+                outputToken(out);
+            }
+        }
+        out << "<变量说明>" << endl;
+    }
+
+    void parseStatementList(ofstream& out) {
+        while (currentPos < tokens.size() && tokens[currentPos].first != "RBRACE") {
+            parseStatement(out);
+        }
+        out << "<语句列>" << endl;
+    }
+
+    void parseStatement(ofstream& out) {
+        if (currentPos >= tokens.size()) {
+            return;
+        }
+        
+        string tokenType = tokens[currentPos].first;
+        
+        if (tokenType == "SEMICN") {
+            outputToken(out);
+        }
+        else if (tokenType == "LBRACE") {
+            outputToken(out);
+            parseStatementList(out);
+            if (currentPos < tokens.size()) {
+                outputToken(out);
+            }
+        }
+        else if (tokenType == "WHILETK") {
+            outputToken(out);
+            outputToken(out);
+            parseCondition(out);
+            outputToken(out);
+            parseStatement(out);
+            out << "<循环语句>" << endl;
+        }
+        else if (tokenType == "FORTK") {
+            for (int i = 0; i < 4 && currentPos < tokens.size(); i++) {
+                outputToken(out);
+            }
+            parseExpression(out);
+            if (currentPos < tokens.size()) {
+                outputToken(out);
+            }
+            parseCondition(out);
+            for (int i = 0; i < 5 && currentPos < tokens.size(); i++) {
+                outputToken(out);
+            }
+            parseStep(out);
+            if (currentPos < tokens.size()) {
+                outputToken(out);
+            }
+            parseStatement(out);
+            out << "<循环语句>" << endl;
+        }
+        else if (tokenType == "IFTK") {
+            outputToken(out);
+            outputToken(out);
+            parseCondition(out);
+            outputToken(out);
+            parseStatement(out);
+            if (currentPos < tokens.size() && tokens[currentPos].first == "ELSETK") {
+                outputToken(out);
+                parseStatement(out);
+            }
+            out << "<条件语句>" << endl;
+        }
+        else if (funcResType.find(tokens[currentPos].second) != funcResType.end()) {
+            string funcCallType = (funcResType[tokens[currentPos].second] == "<无返回值函数定义>") ? 
+                                 "<无返回值函数调用语句>" : "<有返回值函数调用语句>";
+            outputToken(out);
+            outputToken(out);
+            parseValueParameterTable(out);
+            outputToken(out);
+            out << funcCallType << endl;
+            outputToken(out);
+        }
+        else if (tokenType == "SCANFTK") {
+            for (int i = 0; i < 4 && currentPos < tokens.size(); i++) {
+                outputToken(out);
+            }
+            out << "<读语句>" << endl;
+            outputToken(out);
+        }
+        else if (tokenType == "PRINTFTK") {
+            outputToken(out);
+            outputToken(out);
+            if (currentPos < tokens.size() && tokens[currentPos].first == "STRCON") {
+                outputToken(out);
+                out << "<字符串>" << endl;
+                if (currentPos < tokens.size() && tokens[currentPos].first == "COMMA") {
+                    outputToken(out);
+                    parseExpression(out);
+                }
+            }
+            else {
+                parseExpression(out);
+            }
+            outputToken(out);
+            out << "<写语句>" << endl;
+            outputToken(out);
+        }
+        else if (tokens[currentPos].second == "switch") {
+            outputToken(out);
+            outputToken(out);
+            parseExpression(out);
+            outputToken(out);
+            outputToken(out);
+            parseSituationTable(out);
+            parseDefaultStatement(out);
+            outputToken(out);
+            out << "<情况语句>" << endl;
+        }
+        else if (tokenType == "RETURNTK") {
+            outputToken(out);
+            if (currentPos < tokens.size() && tokens[currentPos].first == "LPARENT") {
+                outputToken(out);
+                parseExpression(out);
+                outputToken(out);
+            }
+            out << "<返回语句>" << endl;
+            outputToken(out);
+        }
+        else if (tokenType == "IDENFR") {
+            outputToken(out);
+            if (currentPos < tokens.size() && tokens[currentPos].first == "ASSIGN") {
+                outputToken(out);
+                parseExpression(out);
+            } else if (currentPos < tokens.size()) {
+                outputToken(out);
+                parseExpression(out);
+                outputToken(out);
+                if (currentPos < tokens.size() && tokens[currentPos].first == "ASSIGN") {
+                    outputToken(out);
+                    parseExpression(out);
+                }
+                else if (currentPos < tokens.size() && tokens[currentPos].first == "LBRACK") {
+                    outputToken(out);
+                    parseExpression(out);
+                    outputToken(out);
+                    outputToken(out);
+                    parseExpression(out);
+                }
+            }
+            out << "<赋值语句>" << endl;
+            outputToken(out);
+        }
+        out << "<语句>" << endl;
+    }
+
+    void parseExpression(ofstream& out) {
+        if (currentPos < tokens.size() && 
+            (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU")) {
+            outputToken(out);
+        }
+        parseTerm(out);
+        while (currentPos < tokens.size() && 
+               (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU")) {
+            outputToken(out);
+            parseTerm(out);
+        }
+        out << "<表达式>" << endl;
+    }
+
+    void parseTerm(ofstream& out) {
+        parseFactor(out);
+        while (currentPos < tokens.size() && 
+               (tokens[currentPos].first == "MULT" || tokens[currentPos].first == "DIV")) {
+            outputToken(out);
+            parseFactor(out);
+        }
+        out << "<项>" << endl;
+    }
+
+    void parseFactor(ofstream& out) {
+        if (currentPos >= tokens.size()) {
+            return;
+        }
+        
+        if (funcResType.find(tokens[currentPos].second) != funcResType.end()) {
+            outputToken(out);
+            outputToken(out);
+            if (currentPos < tokens.size() && tokens[currentPos].first != "RPARENT") {
+                parseValueParameterTable(out);
+            } else {
+                out << "<值参数表>" << endl;
+            }
+            outputToken(out);
+            out << "<有返回值函数调用语句>" << endl;
+        }
+        else if (tokens[currentPos].first == "CHARCON") {
+            outputToken(out);
+        }
+        else if (tokens[currentPos].first == "INTCON") {
+            outputToken(out);
+            out << "<无符号整数>" << endl;
+            out << "<整数>" << endl;
+        }
+        else if (currentPos + 1 < tokens.size() && 
+                 (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU") && 
+                 tokens[currentPos + 1].first == "INTCON") {
+            outputToken(out);
+            outputToken(out);
+            out << "<无符号整数>" << endl;
+            out << "<整数>" << endl;
+        }
+        else if (tokens[currentPos].first == "LPARENT") {
+            outputToken(out);
+            parseExpression(out);
+            outputToken(out);
+        }
+        else {
+            outputToken(out);
+            if (currentPos < tokens.size() && tokens[currentPos].first == "LBRACK") {
+                outputToken(out);
+                parseExpression(out);
+                outputToken(out);
+                if (currentPos < tokens.size() && tokens[currentPos].first == "LBRACK") {
+                    outputToken(out);
+                    parseExpression(out);
+                    outputToken(out);
+                }
+            }
+        }
+        out << "<因子>" << endl;
+    }
+
+    void parseValueParameterTable(ofstream& out) {
+        if (currentPos < tokens.size() && tokens[currentPos].first == "RPARENT") {
+            out << "<值参数表>" << endl;
+            return;
+        }
+        parseExpression(out);
+        while (currentPos < tokens.size() && tokens[currentPos].first == "COMMA") {
+            outputToken(out);
+            parseExpression(out);
+        }
+        out << "<值参数表>" << endl;
+    }
+
+    void parseCondition(ofstream& out) {
+        parseExpression(out);
+        if (currentPos < tokens.size()) {
+            outputToken(out);
+        }
+        parseExpression(out);
+        out << "<条件>" << endl;
+    }
+
+    void parseFunction(ofstream& out) {
+        string funcType;
+        if (currentPos + 1 < tokens.size() && tokens[currentPos + 1].first == "MAINTK") {
+            funcType = "<主函数>";
+        }
+        else if (tokens[currentPos].first == "VOIDTK") {
+            funcType = "<无返回值函数定义>";
+        }
+        else {
+            funcType = "<有返回值函数定义>";
+        }
+        outputToken(out);
+        
+        if (currentPos < tokens.size()) {
+            funcResType[tokens[currentPos].second] = funcType;
+            outputToken(out);
+        }
+        
+        if (currentPos + 1 < tokens.size() && tokens[currentPos + 1].first == "RPARENT") {
+            if (funcType == "<有返回值函数定义>") {
+                out << "<声明头部>" << endl;
+            }
+            outputToken(out);
+            if (funcType != "<主函数>") {
+                out << "<参数表>" << endl;
+            }
+        }
+        else {
+            if (funcType == "<有返回值函数定义>") {
+                out << "<声明头部>" << endl;
+            }
+            outputToken(out);
+            outputToken(out);
+            outputToken(out);
+            while (currentPos < tokens.size() && tokens[currentPos].first == "COMMA") {
+                outputToken(out);
+                outputToken(out);
+                outputToken(out);
+            }
+            if (funcType != "<主函数>") {
+                out << "<参数表>" << endl;
+            }
+        }
+        
+        outputToken(out);
+        outputToken(out);
+        
+        if (currentPos < tokens.size() && tokens[currentPos].first == "CONSTTK") {
+            parseConstantDeclaration(out);
+        }
+        if (currentPos < tokens.size() && isTypeIdentifier(tokens[currentPos].first) && 
+            (currentPos + 2 >= tokens.size() || tokens[currentPos + 2].first != "LPARENT")) {
+            parseVariableDeclaration(out);
+        }
+        parseStatementList(out);
+        out << "<复合语句>" << endl;
+        outputToken(out);
+        out << funcType << endl;
+        currentPos--;
+    }
+
+    void parseStep(ofstream& out) {
+        parseUnsignedInteger(out);
+        out << "<步长>" << endl;
+    }
+
+    void parseSituationTable(ofstream& out) {
+        parseCaseStatement(out);
+        while (currentPos < tokens.size() && tokens[currentPos].first == "CASETK") {
+            parseCaseStatement(out);
+        }
+        out << "<情况表>" << endl;
+    }
+
+    void parseCaseStatement(ofstream& out) {
+        outputToken(out);
+        parseConstant(out);
+        outputToken(out);
+        parseStatement(out);
+        out << "<情况子语句>" << endl;
+    }
+
+    void parseConstant(ofstream& out) {
+        if (currentPos >= tokens.size()) {
+            return;
+        }
+        
+        if (tokens[currentPos].first == "INTCON" ||
+            (currentPos + 1 < tokens.size() && tokens[currentPos + 1].first == "INTCON" && 
+             (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU"))) {
+            parseInteger(out);
+        }
+        else if (tokens[currentPos].first == "CHARCON") {
+            outputToken(out);
+        }
+        out << "<常量>" << endl;
+    }
+
+    void parseInteger(ofstream& out) {
+        if (currentPos < tokens.size() && 
+            (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU")) {
+            outputToken(out);
+        }
+        parseUnsignedInteger(out);
+        out << "<整数>" << endl;
+    }
+
+    void parseUnsignedInteger(ofstream& out) {
+        outputToken(out);
+        while (currentPos < tokens.size() && tokens[currentPos].first == "INTTK") {
+            outputToken(out);
+        }
+        out << "<无符号整数>" << endl;
+    }
+
+    void parseDefaultStatement(ofstream& out) {
+        if (currentPos < tokens.size() && tokens[currentPos].first == "DEFAULTTK") {
+            outputToken(out);
+            outputToken(out);
+            parseStatement(out);
+            out << "<缺省>" << endl;
+        }
+    }
+
+    void analyze() {
+        performLexicalAnalysis();
+        ofstream out(outputPath);
+        
+        if (!out.is_open()) {
+            return;
+        }
+        
+        for (currentPos = 0; currentPos < tokens.size(); currentPos++) {
+            if (tokens[currentPos].first == "CONSTTK") {
+                parseConstantDeclaration(out);
+                currentPos--;
+            }
+            else if (currentPos + 5 < tokens.size() && 
+                     (tokens[currentPos].first == "CHARTK" || tokens[currentPos].first == "INTTK" || tokens[currentPos].first == "VOIDTK") &&
+                     (tokens[currentPos+1].first == "IDENFR" || tokens[currentPos+1].first == "MAINTK") &&
+                     tokens[currentPos+2].first == "LPARENT") {
+                parseFunction(out);
+            }
+            else if (isTypeIdentifier(tokens[currentPos].first) && 
+                     (currentPos + 2 >= tokens.size() || tokens[currentPos + 2].first != "LPARENT")) {
+                parseVariableDeclaration(out);
+                currentPos--;
+            }
+        }
+        out << "<程序>" << endl;
+        out.close();
+    }
+};
 
 int main() {
-    // 设置控制台编码（Windows）
-    system("chcp 65001 > nul");
-    
-    // 初始化哈希表
-    initTokenMap();
-    
-    // 打开文件
-    in.open("testfile.txt");
-    if (!in.is_open()) {
-        cerr << "错误：无法打开testfile.txt文件" << endl;
-        return 1;
-    }
-    
-    out.open("output.txt");
-    if (!out.is_open()) {
-        cerr << "错误：无法打开output.txt文件" << endl;
-        in.close();
-        return 1;
-    }
-    
-    cout << "从testfile.txt读取的内容：" << endl;
-    // 读取并显示文件内容（用于调试）
-    string line;
-    while (getline(in, line)) {
-        cout << line << endl;
-    }
-    in.clear();
-    in.seekg(0, ios::beg);
-    
-    // 执行词法分析
-    lexical();
-    
-    // 关闭文件
-    in.close();
-    out.close();
-    
-    cout << "已成功将内容按格式写入output.txt文件" << endl;
-    
+    SyntaxAnalyzer analyzer;
+    analyzer.analyze();
     return 0;
 }

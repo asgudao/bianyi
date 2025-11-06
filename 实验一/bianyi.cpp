@@ -18,9 +18,6 @@ ifstream in;           // 输入文件流
 ofstream out;          // 输出文件流
 string currentToken;   // 当前识别的单词
 string currentValue;   // 当前单词的值
-vector<string> tokenResult; // 存储识别结果的栈
-vector<string> coutResult;
-int judge=0; // 用于判断是否一直跳转
 int lineNum = 1;       // 当前行号（用于错误处理）
 
 // 哈希表存储关键字和符号
@@ -197,48 +194,6 @@ void identifyOperator(char c) {
     }
 }
 
-
-
-void coutYFResult(){
-        for(int i = coutResult.size()-1;i>=0;i--){
-            out<<coutResult[i]<<endl;
-            cout<<coutResult[i]<<endl;
-        }
-        coutResult.clear();
-        tokenResult.clear();
-}
-void identifyYFConst(){
-    if(tokenResult.empty()){
-        return;
-    }
-    //有整数类型
-    if(tokenResult.back()=="INTCON"){
-
-        out<<"<整数>"<<endl;
-        out<<"<无符号整数>"<<endl;
-    }
-    
-    // 如果当前token是SEMICN，则清空vector
-
-    if (!tokenResult.empty() && tokenResult.back() == "SEMICN") {
-        coutYFResult();
-    }
-
-}
-void identifyYF(){
-    if(tokenResult.empty()){
-        return;
-    }
-    
-    // 如果识别到CONSTTK，就跳转到常量判断的函数
-    if (tokenResult.back() == "CONSTTK") {
-        judge=1;
-        coutResult.push_back("<常量定义>");
-    }
-    if(judge==1){
-        identifyYFConst();
-    }
-}
 // 词法分析主函数
 void lexical() {
     char c;
@@ -284,16 +239,9 @@ void lexical() {
             identifyOperator(c);
         }
         
-        // 将识别结果放入vector中
-        if (!currentToken.empty()) {
-            tokenResult.push_back(currentToken);
-        }
-        
         // 输出结果
-        identifyYF();
         out << currentToken << " " << currentValue << endl;
         cout << currentToken << " " << currentValue << endl;
-
     }
 }
 
