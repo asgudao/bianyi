@@ -2,18 +2,24 @@ CONSTTK coNst
 INTTK int
 IDENFR cONst1
 ASSIGN =
+<整数>
+<无符号整数>
 INTCON 001
 COMMA ,
 IDENFR const2
 ASSIGN =
 MINU -
+<整数>
+<无符号整数>
 INTCON 100
+<常量定义>
 SEMICN ;
 CONSTTK const
 CHARTK char
 IDENFR const3
 ASSIGN =
 CHARCON _
+<常量定义>
 SEMICN ;
 INTTK int
 IDENFR change1
@@ -57,8 +63,12 @@ PRINTFTK printf
 LPARENT (
 IDENFR gets1
 LPARENT (
+<整数>
+<无符号整数>
 INTCON 10
 COMMA ,
+<整数>
+<无符号整数>
 INTCON 20
 RPARENT )
 RPARENT )

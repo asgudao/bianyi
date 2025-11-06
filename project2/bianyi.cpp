@@ -6,7 +6,6 @@
 #include <cstdlib>
 #include <sstream>
 #include <string>
-#include <cctype>
 using namespace std;
 
 class SyntaxAnalyzer {
@@ -17,9 +16,8 @@ public:
     int currRow;
     int currCol;
     map<string, string> keyword = {
-        {"const", "CONSTTK"}, {"int", "INTTK"}, {"char", "CHARTK"}, {"void", "VOIDTK"}, {"main", "MAINTK"}, 
-        {"if", "IFTK"}, {"else", "ELSETK"}, {"switch", "SWITCHTK"}, {"case", "CASETK"}, {"default", "DEFAULTTK"},
-        {"while", "WHILETK"}, {"for", "FORTK"}, {"scanf", "SCANFTK"}, {"printf", "PRINTFTK"}, {"return", "RETURNTK"}
+        {"const", "CONSTTK"}, {"int", "INTTK"}, {"char", "CHARTK"}, {"void", "VOIDTK"}, {"main", "MAINTK"}, {"if", "IFTK"}, {"else", "ELSETK"}, {"switch", "SWITCHTK"},
+        {"case", "CASETK"}, {"default", "DEFAULTTK"}, {"while", "WHILETK"}, {"for", "FORTK"}, {"scanf", "SCANFTK"}, {"printf", "PRINTFTK"}, {"return", "RETURNTK"}
     };
 
     fstream in;
@@ -35,7 +33,7 @@ public:
         return (c <= 'z' && c >= 'a') || (c <= 'Z' && c >= 'A') || (c == '_');
     }
 
-    string toLower(string str) {
+    string lower(string str) {
         string temp = str;
         for (int i = 0; i < str.size(); i++) {
             if (temp[i] <= 'Z' && temp[i] >= 'A') {
@@ -48,19 +46,16 @@ public:
     SyntaxAnalyzer() {
         inputPath = "testfile.txt";
         outputPath = "output.txt";
+        in.open(inputPath, ios::in);
         currentPos = 0;
         currRow = 0;
         currCol = 0;
-        
-        in.open(inputPath, ios::in);
-        if (in.is_open()) {
-            while (in.peek() != EOF) {
-                string input;
-                getline(in, input);
-                sourceCode.push_back(input);
-            }
-            in.close();
+        while (in.peek() != EOF) {
+            string input;
+            getline(in, input);
+            sourceCode.push_back(input);
         }
+        in.close();
     }
 
     void performLexicalAnalysis() {
@@ -135,8 +130,13 @@ public:
                 while (pos < content.size() && (isalnum(content[pos]) || content[pos] == '_')) {
                     value += content[pos++];
                 }
-                string lowerValue = toLower(value);
-                token = tokenMap.count(lowerValue) ? tokenMap[lowerValue] : "IDENFR";
+                string lowerValue = value;
+                for (char& ch : lowerValue) ch = tolower(ch);
+                if (tokenMap.count(lowerValue)) {
+                    token = tokenMap[lowerValue];
+                } else {
+                    token = "IDENFR";
+                }
             }
             else if (isdigit(c)) {
                 while (pos < content.size() && isdigit(content[pos])) {
@@ -166,7 +166,11 @@ public:
                 if ((c == '<' || c == '>' || c == '=' || c == '!') && pos < content.size() && content[pos] == '=') {
                     value += content[pos++];
                 }
-                token = tokenMap.count(value) ? tokenMap[value] : "UNKNOWN";
+                if (tokenMap.count(value)) {
+                    token = tokenMap[value];
+                } else {
+                    token = "UNKNOWN";
+                }
             }
 
             tokens.emplace_back(token, value);
@@ -178,18 +182,15 @@ public:
     }
 
     void outputToken(ofstream& out) {
-        if (currentPos < tokens.size()) {
-            out << tokens[currentPos].first << " " << tokens[currentPos].second << endl;
-            currentPos++;
-        }
+        out << tokens[currentPos].first << " " << tokens[currentPos].second << endl;
+        currentPos++;
     }
 
     void parseConstantDeclaration(ofstream& out) {
         outputToken(out);
         parseConstantDefinition(out);
         outputToken(out);
-        
-        while (currentPos < tokens.size() && tokens[currentPos].first == "CONSTTK") {
+        while (tokens[currentPos].first == "CONSTTK") {
             outputToken(out);
             parseConstantDefinition(out);
             outputToken(out);
@@ -198,22 +199,20 @@ public:
     }
 
     void parseConstantDefinition(ofstream& out) {
-        string typeToken = tokens[currentPos].first;
+        string temp = tokens[currentPos].first;
         outputToken(out);
         outputToken(out);
         outputToken(out);
-        
-        if (typeToken == "INTTK") {
+        if (temp == "INTTK") {
             parseInteger(out);
         } else {
             outputToken(out);
         }
-        
-        while (currentPos < tokens.size() && tokens[currentPos].first == "COMMA") {
+        while (tokens[currentPos].first == "COMMA") {
             outputToken(out);
             outputToken(out);
             outputToken(out);
-            if (typeToken == "INTTK") {
+            if (temp == "INTTK") {
                 parseInteger(out);
             } else {
                 outputToken(out);
@@ -223,85 +222,72 @@ public:
     }
 
     void parseVariableDeclaration(ofstream& out) {
-        while (currentPos < tokens.size() && isTypeIdentifier(tokens[currentPos].first) && 
-               (currentPos + 2 >= tokens.size() || tokens[currentPos + 2].first != "LPARENT")) {
+        while (isTypeIdentifier(tokens[currentPos].first) && (tokens[currentPos + 2].first) != "LPARENT") {
             string temp;
             do {
                 outputToken(out);
                 outputToken(out);
-                vector<int> dimensions;
-                
-                while (currentPos < tokens.size() && tokens[currentPos].first == "LBRACK") {
+                vector<int> numRecord;
+                while (tokens[currentPos].first == "LBRACK") {
                     outputToken(out);
-                    dimensions.push_back(atoi(tokens[currentPos].second.c_str()));
+                    numRecord.push_back(atoi(tokens[currentPos].second.c_str()));
                     parseUnsignedInteger(out);
                     outputToken(out);
                 }
 
-                if (currentPos >= tokens.size() || tokens[currentPos].first != "ASSIGN") {
+                if (tokens[currentPos].first != "ASSIGN") {
                     temp = "<变量定义无初始化>";
                 }
                 else {
                     outputToken(out);
-                    if (dimensions.empty()) {
+                    if (numRecord.empty()) {
                         parseConstant(out);
                     }
                     else {
-                        int totalElements = 1;
-                        for (int dim : dimensions) {
-                            totalElements *= dim;
+                        int totalElem = 1;
+                        for (auto x : numRecord) {
+                            totalElem *= x;
                         }
-                        while (totalElements > 0 && currentPos < tokens.size()) {
+                        while (totalElem) {
                             if (tokens[currentPos].first == "INTCON" || tokens[currentPos].first == "CHARCON") {
                                 parseConstant(out);
-                                totalElements--;
+                                totalElem--;
                             }
                             else {
                                 outputToken(out);
                             }
                         }
-                        for (size_t i = 0; i < dimensions.size() && currentPos < tokens.size(); i++) {
+                        for (int i = 0; i < numRecord.size(); i++) {
                             outputToken(out);
                         }
                     }
                     temp = "<变量定义及初始化>";
                 }
             } while(currentPos < tokens.size() && tokens[currentPos].first == "COMMA");
-            
             out << temp << endl;
             out << "<变量定义>" << endl;
-            if (currentPos < tokens.size()) {
-                outputToken(out);
-            }
+            outputToken(out);
         }
         out << "<变量说明>" << endl;
     }
 
     void parseStatementList(ofstream& out) {
-        while (currentPos < tokens.size() && tokens[currentPos].first != "RBRACE") {
+        while (tokens[currentPos].first != "RBRACE") {
             parseStatement(out);
         }
         out << "<语句列>" << endl;
     }
 
     void parseStatement(ofstream& out) {
-        if (currentPos >= tokens.size()) {
-            return;
-        }
-        
-        string tokenType = tokens[currentPos].first;
-        
-        if (tokenType == "SEMICN") {
+        if (tokens[currentPos].first == "SEMICN") {
             outputToken(out);
         }
-        else if (tokenType == "LBRACE") {
+        else if (tokens[currentPos].first == "LBRACE") {
             outputToken(out);
             parseStatementList(out);
-            if (currentPos < tokens.size()) {
-                outputToken(out);
-            }
+            outputToken(out);
         }
-        else if (tokenType == "WHILETK") {
+        else if (tokens[currentPos].first == "WHILETK") {
             outputToken(out);
             outputToken(out);
             parseCondition(out);
@@ -309,61 +295,56 @@ public:
             parseStatement(out);
             out << "<循环语句>" << endl;
         }
-        else if (tokenType == "FORTK") {
-            for (int i = 0; i < 4 && currentPos < tokens.size(); i++) {
+        else if (tokens[currentPos].first == "FORTK") {
+            for (int i = 0; i < 4; i++) {
                 outputToken(out);
             }
             parseExpression(out);
-            if (currentPos < tokens.size()) {
-                outputToken(out);
-            }
+            outputToken(out);
             parseCondition(out);
-            for (int i = 0; i < 5 && currentPos < tokens.size(); i++) {
+            for (int i = 0; i < 5; i++) {
                 outputToken(out);
             }
             parseStep(out);
-            if (currentPos < tokens.size()) {
-                outputToken(out);
-            }
+            outputToken(out);
             parseStatement(out);
             out << "<循环语句>" << endl;
         }
-        else if (tokenType == "IFTK") {
+        else if (tokens[currentPos].first == "IFTK") {
             outputToken(out);
             outputToken(out);
             parseCondition(out);
             outputToken(out);
             parseStatement(out);
-            if (currentPos < tokens.size() && tokens[currentPos].first == "ELSETK") {
+            if (tokens[currentPos].first == "ELSETK") {
                 outputToken(out);
                 parseStatement(out);
             }
             out << "<条件语句>" << endl;
         }
         else if (funcResType.find(tokens[currentPos].second) != funcResType.end()) {
-            string funcCallType = (funcResType[tokens[currentPos].second] == "<无返回值函数定义>") ? 
-                                 "<无返回值函数调用语句>" : "<有返回值函数调用语句>";
+            string temp = (funcResType[tokens[currentPos].second] == "<无返回值函数定义>") ? "<无返回值函数调用语句>" : "<有返回值函数调用语句>";
             outputToken(out);
             outputToken(out);
             parseValueParameterTable(out);
             outputToken(out);
-            out << funcCallType << endl;
+            out << temp << endl;
             outputToken(out);
         }
-        else if (tokenType == "SCANFTK") {
-            for (int i = 0; i < 4 && currentPos < tokens.size(); i++) {
+        else if (tokens[currentPos].first == "SCANFTK") {
+            for (int i = 0; i < 4; i++) {
                 outputToken(out);
             }
             out << "<读语句>" << endl;
             outputToken(out);
         }
-        else if (tokenType == "PRINTFTK") {
+        else if (tokens[currentPos].first == "PRINTFTK") {
             outputToken(out);
             outputToken(out);
-            if (currentPos < tokens.size() && tokens[currentPos].first == "STRCON") {
+            if (tokens[currentPos].first == "STRCON") {
                 outputToken(out);
                 out << "<字符串>" << endl;
-                if (currentPos < tokens.size() && tokens[currentPos].first == "COMMA") {
+                if (tokens[currentPos].first == "COMMA") {
                     outputToken(out);
                     parseExpression(out);
                 }
@@ -386,9 +367,9 @@ public:
             outputToken(out);
             out << "<情况语句>" << endl;
         }
-        else if (tokenType == "RETURNTK") {
+        else if (tokens[currentPos].first == "RETURNTK") {
             outputToken(out);
-            if (currentPos < tokens.size() && tokens[currentPos].first == "LPARENT") {
+            if (tokens[currentPos].first == "LPARENT") {
                 outputToken(out);
                 parseExpression(out);
                 outputToken(out);
@@ -396,20 +377,20 @@ public:
             out << "<返回语句>" << endl;
             outputToken(out);
         }
-        else if (tokenType == "IDENFR") {
+        else if (tokens[currentPos].first == "IDENFR") {
             outputToken(out);
-            if (currentPos < tokens.size() && tokens[currentPos].first == "ASSIGN") {
+            if (tokens[currentPos].first == "ASSIGN") {
                 outputToken(out);
                 parseExpression(out);
-            } else if (currentPos < tokens.size()) {
+            } else {
                 outputToken(out);
                 parseExpression(out);
                 outputToken(out);
-                if (currentPos < tokens.size() && tokens[currentPos].first == "ASSIGN") {
+                if (tokens[currentPos].first == "ASSIGN") {
                     outputToken(out);
                     parseExpression(out);
                 }
-                else if (currentPos < tokens.size() && tokens[currentPos].first == "LBRACK") {
+                else if (tokens[currentPos].first == "LBRACK") {
                     outputToken(out);
                     parseExpression(out);
                     outputToken(out);
@@ -420,17 +401,19 @@ public:
             out << "<赋值语句>" << endl;
             outputToken(out);
         }
+        else {
+            cout << "Error!" << endl;
+            throw system_error();
+        }
         out << "<语句>" << endl;
     }
 
     void parseExpression(ofstream& out) {
-        if (currentPos < tokens.size() && 
-            (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU")) {
+        if (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU") {
             outputToken(out);
         }
         parseTerm(out);
-        while (currentPos < tokens.size() && 
-               (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU")) {
+        while (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU") {
             outputToken(out);
             parseTerm(out);
         }
@@ -439,8 +422,7 @@ public:
 
     void parseTerm(ofstream& out) {
         parseFactor(out);
-        while (currentPos < tokens.size() && 
-               (tokens[currentPos].first == "MULT" || tokens[currentPos].first == "DIV")) {
+        while (tokens[currentPos].first == "MULT" || tokens[currentPos].first == "DIV") {
             outputToken(out);
             parseFactor(out);
         }
@@ -448,14 +430,10 @@ public:
     }
 
     void parseFactor(ofstream& out) {
-        if (currentPos >= tokens.size()) {
-            return;
-        }
-        
         if (funcResType.find(tokens[currentPos].second) != funcResType.end()) {
             outputToken(out);
             outputToken(out);
-            if (currentPos < tokens.size() && tokens[currentPos].first != "RPARENT") {
+            if (tokens[currentPos].first != "RPARENT") {
                 parseValueParameterTable(out);
             } else {
                 out << "<值参数表>" << endl;
@@ -471,9 +449,7 @@ public:
             out << "<无符号整数>" << endl;
             out << "<整数>" << endl;
         }
-        else if (currentPos + 1 < tokens.size() && 
-                 (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU") && 
-                 tokens[currentPos + 1].first == "INTCON") {
+        else if ((tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU") && tokens[currentPos + 1].first == "INTCON") {
             outputToken(out);
             outputToken(out);
             out << "<无符号整数>" << endl;
@@ -486,11 +462,11 @@ public:
         }
         else {
             outputToken(out);
-            if (currentPos < tokens.size() && tokens[currentPos].first == "LBRACK") {
+            if (tokens[currentPos].first == "LBRACK") {
                 outputToken(out);
                 parseExpression(out);
                 outputToken(out);
-                if (currentPos < tokens.size() && tokens[currentPos].first == "LBRACK") {
+                if (tokens[currentPos].first == "LBRACK") {
                     outputToken(out);
                     parseExpression(out);
                     outputToken(out);
@@ -501,12 +477,12 @@ public:
     }
 
     void parseValueParameterTable(ofstream& out) {
-        if (currentPos < tokens.size() && tokens[currentPos].first == "RPARENT") {
+        if (tokens[currentPos].first == "RPARENT") {
             out << "<值参数表>" << endl;
             return;
         }
         parseExpression(out);
-        while (currentPos < tokens.size() && tokens[currentPos].first == "COMMA") {
+        while (tokens[currentPos].first == "COMMA") {
             outputToken(out);
             parseExpression(out);
         }
@@ -515,16 +491,14 @@ public:
 
     void parseCondition(ofstream& out) {
         parseExpression(out);
-        if (currentPos < tokens.size()) {
-            outputToken(out);
-        }
+        outputToken(out);
         parseExpression(out);
         out << "<条件>" << endl;
     }
 
     void parseFunction(ofstream& out) {
         string funcType;
-        if (currentPos + 1 < tokens.size() && tokens[currentPos + 1].first == "MAINTK") {
+        if (tokens[currentPos + 1].first == "MAINTK") {
             funcType = "<主函数>";
         }
         else if (tokens[currentPos].first == "VOIDTK") {
@@ -534,13 +508,9 @@ public:
             funcType = "<有返回值函数定义>";
         }
         outputToken(out);
-        
-        if (currentPos < tokens.size()) {
-            funcResType[tokens[currentPos].second] = funcType;
-            outputToken(out);
-        }
-        
-        if (currentPos + 1 < tokens.size() && tokens[currentPos + 1].first == "RPARENT") {
+        funcResType[tokens[currentPos].second] = funcType;
+        outputToken(out);
+        if (tokens[currentPos + 1].first == "RPARENT") {
             if (funcType == "<有返回值函数定义>") {
                 out << "<声明头部>" << endl;
             }
@@ -556,7 +526,7 @@ public:
             outputToken(out);
             outputToken(out);
             outputToken(out);
-            while (currentPos < tokens.size() && tokens[currentPos].first == "COMMA") {
+            while (tokens[currentPos].first == "COMMA") {
                 outputToken(out);
                 outputToken(out);
                 outputToken(out);
@@ -565,15 +535,12 @@ public:
                 out << "<参数表>" << endl;
             }
         }
-        
         outputToken(out);
         outputToken(out);
-        
-        if (currentPos < tokens.size() && tokens[currentPos].first == "CONSTTK") {
+        if (tokens[currentPos].first == "CONSTTK") {
             parseConstantDeclaration(out);
         }
-        if (currentPos < tokens.size() && isTypeIdentifier(tokens[currentPos].first) && 
-            (currentPos + 2 >= tokens.size() || tokens[currentPos + 2].first != "LPARENT")) {
+        if (isTypeIdentifier(tokens[currentPos].first) && (tokens[currentPos + 2].first) != "LPARENT") {
             parseVariableDeclaration(out);
         }
         parseStatementList(out);
@@ -590,7 +557,7 @@ public:
 
     void parseSituationTable(ofstream& out) {
         parseCaseStatement(out);
-        while (currentPos < tokens.size() && tokens[currentPos].first == "CASETK") {
+        while (tokens[currentPos].first == "CASETK") {
             parseCaseStatement(out);
         }
         out << "<情况表>" << endl;
@@ -605,13 +572,8 @@ public:
     }
 
     void parseConstant(ofstream& out) {
-        if (currentPos >= tokens.size()) {
-            return;
-        }
-        
         if (tokens[currentPos].first == "INTCON" ||
-            (currentPos + 1 < tokens.size() && tokens[currentPos + 1].first == "INTCON" && 
-             (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU"))) {
+            ((tokens[currentPos + 1].first == "INTCON") && (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU"))) {
             parseInteger(out);
         }
         else if (tokens[currentPos].first == "CHARCON") {
@@ -621,8 +583,7 @@ public:
     }
 
     void parseInteger(ofstream& out) {
-        if (currentPos < tokens.size() && 
-            (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU")) {
+        if (tokens[currentPos].first == "PLUS" || tokens[currentPos].first == "MINU") {
             outputToken(out);
         }
         parseUnsignedInteger(out);
@@ -631,53 +592,45 @@ public:
 
     void parseUnsignedInteger(ofstream& out) {
         outputToken(out);
-        while (currentPos < tokens.size() && tokens[currentPos].first == "INTTK") {
+        while (tokens[currentPos].first == "INTTK") {
             outputToken(out);
         }
         out << "<无符号整数>" << endl;
     }
 
     void parseDefaultStatement(ofstream& out) {
-        if (currentPos < tokens.size() && tokens[currentPos].first == "DEFAULTTK") {
-            outputToken(out);
-            outputToken(out);
-            parseStatement(out);
-            out << "<缺省>" << endl;
-        }
+        outputToken(out);
+        outputToken(out);
+        parseStatement(out);
+        out << "<缺省>" << endl;
     }
 
     void analyze() {
-        performLexicalAnalysis();
+        this->performLexicalAnalysis();
         ofstream out(outputPath);
-        
-        if (!out.is_open()) {
-            return;
-        }
-        
         for (currentPos = 0; currentPos < tokens.size(); currentPos++) {
             if (tokens[currentPos].first == "CONSTTK") {
                 parseConstantDeclaration(out);
                 currentPos--;
             }
-            else if (currentPos + 5 < tokens.size() && 
-                     (tokens[currentPos].first == "CHARTK" || tokens[currentPos].first == "INTTK" || tokens[currentPos].first == "VOIDTK") &&
+            else if (currentPos + 5 < tokens.size() && (tokens[currentPos].first == "CHARTK"
+                                                     || tokens[currentPos].first == "INTTK"
+                                                     || tokens[currentPos].first == "VOIDTK") &&
                      (tokens[currentPos+1].first == "IDENFR" || tokens[currentPos+1].first == "MAINTK") &&
                      tokens[currentPos+2].first == "LPARENT") {
                 parseFunction(out);
             }
-            else if (isTypeIdentifier(tokens[currentPos].first) && 
-                     (currentPos + 2 >= tokens.size() || tokens[currentPos + 2].first != "LPARENT")) {
+            else if (isTypeIdentifier(tokens[currentPos].first) && (tokens[currentPos + 2].first) != "LPARENT") {
                 parseVariableDeclaration(out);
                 currentPos--;
             }
         }
         out << "<程序>" << endl;
-        out.close();
     }
 };
 
 int main() {
-    SyntaxAnalyzer analyzer;
-    analyzer.analyze();
+    SyntaxAnalyzer* analyzer = new SyntaxAnalyzer();
+    analyzer->analyze();
     return 0;
 }
